@@ -1,0 +1,462 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="description" content="Kairo: every equipment fault becomes one decision.">
+<title>Kairo Uptime Inbox</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: control bar, then a decision inbox beside a fleet board grouped by site, with an activity log below */
+:root {
+  --bg: #eef0f2;
+  --panel: #ffffff;
+  --ink: #1d232b;
+  --muted: #5d6773;
+  --line: #d5dae0;
+  --accent: #e3a008;      /* hi-vis amber */
+  --accent-ink: #1d232b;
+  --steel: #3e5872;
+  --crit: #c2362f;
+  --warn: #c77700;
+  --ok: #2f7d4f;
+  --info: #3e6fa8;
+  --chip: #e6e9ed;
+  --font-display: "Barlow Condensed", "Arial Narrow", sans-serif;
+  --font-body: "IBM Plex Sans", system-ui, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #14181d; --panel: #1c2229; --ink: #e7eaee; --muted: #9aa4b0; --line: #2e3640;
+    --accent: #f0b429; --accent-ink: #14181d; --steel: #8fb0d0; --crit: #f0645a; --warn: #f0a33a;
+    --ok: #5cc285; --info: #7aa7dc; --chip: #262e37; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #14181d; --panel: #1c2229; --ink: #e7eaee; --muted: #9aa4b0; --line: #2e3640;
+  --accent: #f0b429; --accent-ink: #14181d; --steel: #8fb0d0; --crit: #f0645a; --warn: #f0a33a;
+  --ok: #5cc285; --info: #7aa7dc; --chip: #262e37; color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body {
+  background: var(--bg); color: var(--ink); font-family: var(--font-body); font-size: 14px; line-height: 1.5;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 16px 40px;
+}
+.wrap { max-width: 1240px; margin: 0 auto; display: flex; flex-direction: column; gap: 16px; }
+header.top { display: flex; flex-wrap: wrap; gap: 12px 24px; align-items: flex-end; justify-content: space-between; }
+.brand h1 { font-family: var(--font-display); font-weight: 700; font-size: 30px; letter-spacing: .01em; margin: 0; line-height: 1.05; text-wrap: balance; }
+.brand p { margin: 2px 0 0; color: var(--muted); }
+.who { display: inline-flex; gap: 6px; align-items: center; font-size: 12px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); }
+.who b { color: var(--ink); font-weight: 600; }
+.controls { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.clock { font-family: var(--font-mono); font-size: 13px; padding: 6px 10px; border: 1px solid var(--line); border-radius: 6px; background: var(--panel); font-variant-numeric: tabular-nums; }
+button { font: inherit; cursor: pointer; border-radius: 6px; border: 1px solid var(--line); background: var(--panel); color: var(--ink); padding: 7px 12px; font-weight: 500; }
+button:hover { border-color: var(--muted); }
+button:focus-visible { outline: 2px solid var(--info); outline-offset: 2px; }
+button.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); font-weight: 600; }
+button.primary:hover { filter: brightness(1.05); }
+button:disabled { opacity: .5; cursor: not-allowed; }
+.sample { font-size: 12px; color: var(--muted); }
+
+.metrics { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 1px; background: var(--line); border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+.metric { background: var(--panel); padding: 10px 14px; min-width: 0; }
+.metric .v { font-family: var(--font-display); font-size: 28px; font-weight: 600; font-variant-numeric: tabular-nums; line-height: 1.1; }
+.metric .l { font-size: 12px; color: var(--muted); }
+@media (max-width: 640px) { .metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+
+.main { display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 16px; align-items: start; }
+@media (max-width: 900px) { .main { grid-template-columns: minmax(0, 1fr); } }
+.section-h { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; margin: 0 0 8px; }
+.section-h h2 { font-family: var(--font-display); font-size: 20px; font-weight: 600; margin: 0; letter-spacing: .02em; }
+.section-h span { font-size: 12px; color: var(--muted); }
+
+.inbox { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.empty { border: 1px dashed var(--line); border-radius: 8px; padding: 24px; color: var(--muted); text-align: center; background: var(--panel); }
+
+.card { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; border-left: 4px solid var(--sev, var(--line)); overflow: hidden; min-width: 0; }
+.card.sev-critical { --sev: var(--crit); }
+.card.sev-high { --sev: var(--warn); }
+.card.sev-medium { --sev: var(--info); }
+.card.sev-low { --sev: var(--ok); }
+.card .head { padding: 12px 14px 8px; display: flex; gap: 8px 12px; flex-wrap: wrap; align-items: baseline; justify-content: space-between; }
+.card .title { font-weight: 600; font-size: 15px; min-width: 0; }
+.card .meta { font-size: 12px; color: var(--muted); font-family: var(--font-mono); }
+.pill { display: inline-block; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .06em; padding: 2px 7px; border-radius: 4px; background: var(--chip); color: var(--ink); white-space: nowrap; }
+.pill.critical { background: var(--crit); color: #fff; }
+.pill.high { background: var(--warn); color: #fff; }
+.pill.medium { background: var(--info); color: #fff; }
+.pill.low { background: var(--ok); color: #fff; }
+.pill.done { background: var(--ok); color: #fff; }
+
+.pipeline { display: flex; flex-wrap: wrap; gap: 4px; padding: 0 14px 10px; }
+.step { font-size: 11px; padding: 3px 8px; border-radius: 999px; background: var(--chip); color: var(--muted); display: inline-flex; gap: 5px; align-items: center; white-space: nowrap; }
+.step .who-tag { font-family: var(--font-mono); font-size: 10px; opacity: .8; }
+.step.active { background: var(--accent); color: var(--accent-ink); }
+.step.done { color: var(--ink); }
+.step.done::before { content: "✓"; color: var(--ok); font-weight: 700; }
+.step.skip { text-decoration: line-through; opacity: .6; }
+
+.body { padding: 0 14px 12px; display: grid; gap: 10px; }
+.row { display: grid; grid-template-columns: 112px minmax(0, 1fr); gap: 10px; align-items: start; }
+@media (max-width: 520px) { .row { grid-template-columns: minmax(0, 1fr); gap: 2px; } }
+.row .k { font-size: 11px; text-transform: uppercase; letter-spacing: .07em; color: var(--muted); padding-top: 2px; }
+.row .v { min-width: 0; }
+code, .mono { font-family: var(--font-mono); font-size: 12.5px; }
+.code { background: var(--chip); padding: 1px 6px; border-radius: 4px; }
+.drone { display: grid; grid-template-columns: 150px minmax(0, 1fr); gap: 10px; align-items: start; }
+@media (max-width: 520px) { .drone { grid-template-columns: minmax(0, 1fr); } }
+.drone svg { width: 100%; max-width: 220px; height: auto; border-radius: 6px; display: block; }
+.drone ul { margin: 0; padding-left: 18px; }
+table.parts { border-collapse: collapse; width: 100%; font-size: 13px; }
+table.parts td, table.parts th { text-align: left; padding: 3px 8px 3px 0; border-bottom: 1px solid var(--line); font-variant-numeric: tabular-nums; }
+table.parts th { font-size: 11px; color: var(--muted); font-weight: 500; text-transform: uppercase; letter-spacing: .05em; }
+.tbl { overflow-x: auto; }
+.stock-ok { color: var(--ok); font-weight: 600; }
+.stock-no { color: var(--crit); font-weight: 600; }
+.note { font-size: 12.5px; color: var(--muted); border-left: 2px solid var(--line); padding-left: 8px; }
+.decision { border-top: 1px solid var(--line); padding: 12px 14px; display: flex; flex-direction: column; gap: 10px; background: color-mix(in srgb, var(--accent) 8%, var(--panel)); }
+.decision .ask { font-weight: 600; }
+.decision .btns { display: flex; flex-wrap: wrap; gap: 8px; }
+.decision.resolved { background: var(--panel); }
+.outcome { font-size: 13px; }
+.outcome b { color: var(--ok); }
+.thinking { padding: 0 14px 12px; color: var(--muted); font-size: 13px; }
+.thinking::after { content: "…"; }
+
+aside.fleet { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 12px 14px; min-width: 0; }
+.site { padding: 8px 0; border-bottom: 1px solid var(--line); }
+.site:last-child { border-bottom: 0; }
+.site h3 { margin: 0 0 6px; font-size: 13px; font-weight: 600; display: flex; justify-content: space-between; gap: 8px; }
+.site h3 span { font-weight: 400; color: var(--muted); font-size: 11px; }
+.machines { display: flex; flex-wrap: wrap; gap: 4px; }
+.m { font-family: var(--font-mono); font-size: 11.5px; padding: 2px 6px; border-radius: 4px; border: 1px solid var(--line); display: inline-flex; gap: 4px; align-items: center; }
+.m i { width: 7px; height: 7px; border-radius: 50%; background: var(--ok); display: inline-block; }
+.m.warn i { background: var(--warn); }
+.m.down i { background: var(--crit); }
+.m.sched i { background: var(--info); }
+.m.flash { outline: 2px solid var(--accent); }
+.crew { margin-top: 10px; display: grid; gap: 6px; }
+.crew h3 { margin: 0; font-size: 13px; }
+.mech { font-size: 12.5px; display: flex; justify-content: space-between; gap: 8px; }
+.mech span:last-child { color: var(--muted); text-align: right; }
+.legend { display: flex; flex-wrap: wrap; gap: 10px; font-size: 11px; color: var(--muted); margin-top: 8px; }
+.legend i { width: 7px; height: 7px; border-radius: 50%; display: inline-block; margin-right: 4px; }
+
+.log { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 10px 14px; max-height: 240px; overflow: auto; }
+.log ol { list-style: none; margin: 0; padding: 0; display: grid; gap: 3px; }
+.log li { display: grid; grid-template-columns: 46px 74px minmax(0, 1fr); gap: 8px; font-size: 12.5px; }
+.log .t { font-family: var(--font-mono); color: var(--muted); font-variant-numeric: tabular-nums; }
+.log .a { font-size: 10.5px; text-transform: uppercase; letter-spacing: .06em; font-weight: 600; padding-top: 2px; }
+.a.agent { color: var(--info); } .a.robot { color: var(--warn); } .a.human { color: var(--ok); } .a.machine { color: var(--muted); }
+.foot { font-size: 12px; color: var(--muted); }
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
+</style>
+</head>
+<body>
+
+<div class="wrap">
+  <header class="top">
+    <div class="brand">
+      <div class="who">Signed in as <b>Equipment manager</b> · Hollis Earthworks (sample company)</div>
+      <h1>Kairo · Uptime Inbox</h1>
+      <p>Every fault becomes one decision. The agent and the drone do the legwork, and you make the call.</p>
+    </div>
+    <div class="controls">
+      <span class="clock" id="clock">Tue 06:40</span>
+      <button class="primary" id="next">Next event</button>
+      <button id="auto">Auto-play</button>
+      <button id="reset">Reset</button>
+    </div>
+  </header>
+
+  <div class="metrics" aria-live="polite">
+    <div class="metric"><div class="v" id="mFaults">0</div><div class="l">Events received</div></div>
+    <div class="metric"><div class="v" id="mAuto">0</div><div class="l">Handled without you</div></div>
+    <div class="metric"><div class="v" id="mTrips">0</div><div class="l">Mechanic trips saved by drone</div></div>
+    <div class="metric"><div class="v" id="mTime">–</div><div class="l">Avg. minutes from fault to your decision card</div></div>
+  </div>
+
+  <div class="main">
+    <section>
+      <div class="section-h"><h2>Needs your call</h2><span id="pending">0 waiting</span></div>
+      <div class="inbox" id="inbox">
+        <div class="empty" id="empty">Nothing waiting yet. Press <b>Next event</b> to send in the first fault code from the fleet.</div>
+      </div>
+    </section>
+    <aside class="fleet">
+      <div class="section-h"><h2>Fleet board</h2><span>22 machines · 4 brands</span></div>
+      <div id="sites"></div>
+      <div class="crew" id="crew"></div>
+      <div class="legend">
+        <span><i style="background:var(--ok)"></i>Running</span>
+        <span><i style="background:var(--warn)"></i>Warning</span>
+        <span><i style="background:var(--crit)"></i>Down</span>
+        <span><i style="background:var(--info)"></i>Repair booked</span>
+      </div>
+    </aside>
+  </div>
+
+  <section>
+    <div class="section-h"><h2>Activity</h2><span>who did what</span></div>
+    <div class="log"><ol id="log"></ol></div>
+  </section>
+
+  <p class="foot">Prototype with simulated data. Machines, people, prices and drone images are made up. Fault codes use the J1939 SPN/FMI format that heavy equipment telematics report through the AEMP 2.0 standard. The triage is scripted for this demo. In the real product an LLM agent would do it, using service manuals and the contractor's repair history.</p>
+</div>
+
+<script>
+(() => {
+const SITES = [
+  { id: "Y", name: "Main yard & shop", dock: true },
+  { id: "A", name: "Route 9 Interchange", dock: false },
+  { id: "B", name: "Lafayette Water Plant", dock: true },
+  { id: "C", name: "Northpoint Business Park", dock: false },
+  { id: "D", name: "CR 350 Widening", dock: false },
+];
+const MACHINES = [
+  ["WL-03","CAT 950 loader","Y"],["DZ-02","CAT D6 dozer","Y"],["EX-30","Volvo EC220 excavator","Y"],["SK-01","Deere 332G skid steer","Y"],
+  ["EX-21","Komatsu PC360 excavator","A"],["DZ-08","Deere 850L dozer","A"],["WL-11","Volvo L120 loader","A"],["RL-02","CAT CS56 roller","A"],
+  ["EX-14","Deere 350G excavator","B"],["EX-16","CAT 336 excavator","B"],["WL-09","Volvo L120 loader","B"],["AT-04","Deere 410E artic. truck","B"],["AT-05","Deere 410E artic. truck","B"],
+  ["EX-07","CAT 336 excavator","C"],["DZ-04","Komatsu D61 dozer","C"],["WL-06","CAT 950 loader","C"],["MG-01","Deere 772G grader","C"],
+  ["DZ-05","Komatsu D61 dozer","D"],["EX-25","Komatsu PC290 excavator","D"],["RL-03","CAT CS56 roller","D"],["MG-02","CAT 140 grader","D"],["SK-04","Deere 332G skid steer","D"],
+].map(([id, model, site]) => ({ id, model, site, status: "ok" }));
+const MECHS = [
+  { name: "Mike R.", role: "Shop", at: "Y", task: "Free" },
+  { name: "Dana K.", role: "Field truck 2", at: "A", task: "PM service on DZ-08" },
+  { name: "Luis P.", role: "Field truck 3", at: "D", task: "Next: DZ-02 500-hr service (overdue 3 days)" },
+];
+
+// Each event walks the same pipeline: fault -> agent triage -> drone look -> parts -> mechanic -> your call
+const EVENTS = [
+  {
+    at: "06:42", machine: "WL-03", source: "telematics",
+    code: { spn: 1638, fmi: 16, text: "Hydraulic oil temperature above normal (moderately severe)" },
+    triage: { sev: "high", cause: "Likely a hydraulic leak or a cooler bypassing. Temperature has risen 18°F over 3 days at the same workload.", conf: 0.74 },
+    drone: { ok: true, where: "Yard dock", mins: 6, flag: "Wet oil residue on the left boom hose near the clamp", findings: ["Oil residue on left boom hose (photo 2 of 6)", "No puddle under the machine", "Cooler fins look clean"], box: [92, 40, 46, 30] },
+    parts: [{ name: "Boom hose kit, 1/2 in.", sku: "HK-0512", stock: 3, cost: 145 }],
+    mech: { name: "Mike R.", eta: "10 min", why: "Already at the yard and free" },
+    ask: "Lock out WL-03 and send Mike to replace the boom hose?",
+    lockout: true,
+    options: [
+      { label: "Approve lockout + repair", primary: true, out: "Work order WO-2291 created. WL-03 locked out, and Mike is on his way with hose kit HK-0512.", status: "sched", mech: ["Mike R.", "Replacing boom hose on WL-03"] },
+      { label: "Keep running, inspect at lunch", out: "Recheck booked for 12:00. The agent will alert you if the temperature climbs past 210°F.", status: "warn" },
+    ],
+    note: "Locking out a machine needs a person to sign off. The agent can recommend it but can't do it on its own.",
+  },
+  {
+    at: "07:05", machine: "DZ-05", source: "telematics",
+    code: { spn: 97, fmi: 15, text: "Water in fuel indicator (least severe)" },
+    triage: { sev: "low", cause: "Water in the fuel separator. The operator can drain it on the spot. This is the third time this month on DZ-05, so the fuel source is worth checking.", conf: 0.9 },
+    auto: "Texted the operator a 2-minute drain procedure. Added a fuel-filter check to the next service. Flagged the fuel supplier for site D.",
+  },
+  {
+    at: "07:31", machine: "EX-14", source: "telematics",
+    code: { spn: 4364, fmi: 18, text: "Aftertreatment SCR conversion efficiency below normal" },
+    triage: { sev: "medium", cause: "Most likely a failing NOx sensor. A DEF quality problem is less likely. If nobody fixes it, the engine will derate in about 10 machine-hours.", conf: 0.68 },
+    drone: { ok: true, where: "Site B dock", mins: 8, flag: "DEF tank cap and lines look normal, no white crystal build-up", findings: ["DEF tank cap seated, no crystals", "No visible damage to the exhaust lines", "Rules out a DEF leak, so it points to the sensor"], box: [40, 52, 50, 28] },
+    parts: [{ name: "NOx sensor (outlet)", sku: "NX-4410", stock: 0, cost: 1180, lead: "Dealer has it, pickup today 14:00" }],
+    mech: { name: "Dana K.", eta: "Tomorrow 07:00", why: "Closest field truck. She finishes the DZ-08 PM by 11:00" },
+    ask: "Approve the $1,180 sensor purchase and book Dana for tomorrow 7am?",
+    options: [
+      { label: "Approve PO + booking", primary: true, out: "PO-881 sent to the dealer, and Dana is booked for 07:00 Wed. EX-14 keeps digging today. The agent is watching the derate countdown.", status: "sched", mech: ["Dana K.", "Wed 07:00: NOx sensor on EX-14"] },
+      { label: "Send Dana to diagnose first", out: "Dana goes to diagnose at 11:30. The part is put on hold at the dealer for 24h.", status: "warn" },
+    ],
+    note: "This one usually turns into a loop: the mechanic waits for the part, the part waits for PO approval, and the approval waits for a diagnosis. The drone look ruled out the DEF leak, so you can approve the part and the visit in one go.",
+  },
+  {
+    at: "08:12", machine: "EX-07", source: "telematics",
+    code: { spn: 100, fmi: 1, text: "Engine oil pressure below normal (most severe)" },
+    triage: { sev: "critical", cause: "Oil pressure dropped sharply under load. Keep running it and you risk engine damage. The operator has already been told to shut down.", conf: 0.86 },
+    drone: { ok: false, why: "No drone dock at Northpoint, so a mechanic goes straight there" },
+    parts: [{ name: "Oil pressure sender", sku: "OP-2210", stock: 2, cost: 96 }, { name: "Engine oil, 15W-40 (5 gal)", sku: "OIL-1540", stock: 14, cost: 82 }],
+    mech: { name: "Luis P.", eta: "35 min", why: "Pulled off the routine DZ-02 service. That job moves up to first in line tomorrow, so it isn't pushed back again" },
+    ask: "EX-07 is down at Northpoint and the trench crew is waiting. Move EX-21 over from Route 9?",
+    options: [
+      { label: "Send Luis + move EX-21", primary: true, out: "Luis is on his way (35 min). EX-21 is being hauled to Northpoint and gets there around 09:30. The Route 9 superintendent has been told.", status: "down", mech: ["Luis P.", "Urgent: EX-07 oil pressure, Northpoint"], move: ["EX-21", "C"] },
+      { label: "Send Luis only", out: "Luis is on his way (35 min). The trench crew waits for the diagnosis.", status: "down", mech: ["Luis P.", "Urgent: EX-07 oil pressure, Northpoint"] },
+      { label: "Call a rental", out: "The rental desk has been asked for a 36-ton excavator. Earliest delivery is 13:00. Luis is still sent.", status: "down", mech: ["Luis P.", "Urgent: EX-07 oil pressure, Northpoint"] },
+    ],
+    note: "This critical fault jumped ahead of the routine DZ-02 service. DZ-02 is already 3 days overdue, so the system moved it to first in line tomorrow. That way urgent jobs don't keep pushing it back.",
+  },
+  {
+    at: "09:05", machine: "DZ-02", source: "drone",
+    code: null,
+    triage: { sev: "medium", cause: "No fault code. The drone's yard lap spotted 2 cracked track shoes on the right side. Undercarriage wear isn't reported by telematics.", conf: 0.8 },
+    drone: { ok: true, where: "Yard dock (scheduled lap)", mins: 0, flag: "2 cracked track shoes, right side, rear", findings: ["2 cracked shoes, right track (photos 4–5)", "Wear has grown since last week's lap (same angle)", "Other machines on the yard look fine"], box: [30, 64, 70, 18] },
+    parts: [{ name: "Track shoe, 22 in.", sku: "TS-2206", stock: 6, cost: 210 }],
+    mech: { name: "Luis P.", eta: "Wed 07:00", why: "Same visit as the overdue 500-hr service, so it's one trip instead of two" },
+    ask: "Add the track shoe repair to DZ-02's service tomorrow?",
+    options: [
+      { label: "Bundle with tomorrow's service", primary: true, out: "Added to Luis's visit on Wed 07:00. Two jobs, one trip.", status: "sched", trip: true },
+      { label: "Ignore for now", out: "Noted. The drone will photograph it again on Friday's lap.", status: "ok" },
+    ],
+    note: "This one started with the robot, not a fault code. A person would only have caught it on a walkaround they probably wouldn't have time for.",
+  },
+];
+
+let clock = 6 * 60 + 40, idx = 0, auto = null, busy = false;
+const stats = { faults: 0, auto: 0, trips: 0, decisionMins: [] };
+const $ = (id) => document.getElementById(id);
+const fmt = (m) => `Tue ${String(Math.floor(m / 60)).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}`;
+const toMin = (s) => { const [h, m] = s.split(":").map(Number); return h * 60 + m; };
+const reduced = matchMedia("(prefers-reduced-motion: reduce)").matches;
+const wait = (ms) => new Promise((r) => setTimeout(r, reduced ? 0 : ms));
+const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+const machine = (id) => MACHINES.find((m) => m.id === id);
+const siteName = (id) => SITES.find((s) => s.id === id).name;
+
+function log(actor, text) {
+  const li = document.createElement("li");
+  li.innerHTML = `<span class="t">${fmt(clock).slice(4)}</span><span class="a ${actor}">${actor}</span><span>${esc(text)}</span>`;
+  $("log").prepend(li);
+}
+function renderFleet(flash) {
+  $("sites").innerHTML = SITES.map((s) => `
+    <div class="site"><h3>${esc(s.name)}<span>${s.dock ? "drone dock" : "no dock"}</span></h3>
+      <div class="machines">${MACHINES.filter((m) => m.site === s.id).map((m) =>
+        `<span class="m ${m.status} ${m.id === flash ? "flash" : ""}" title="${esc(m.model)}"><i></i>${m.id}</span>`).join("")}</div>
+    </div>`).join("");
+  $("crew").innerHTML = `<h3>Mechanics</h3>` + MECHS.map((m) =>
+    `<div class="mech"><span><b>${esc(m.name)}</b> · ${esc(m.role)}</span><span>${esc(m.task)}</span></div>`).join("");
+}
+function renderStats() {
+  $("mFaults").textContent = stats.faults;
+  $("mAuto").textContent = stats.auto;
+  $("mTrips").textContent = stats.trips;
+  const d = stats.decisionMins;
+  $("mTime").textContent = d.length ? Math.round(d.reduce((a, b) => a + b, 0) / d.length) : "–";
+  const n = document.querySelectorAll(".card[data-open='1']").length;
+  $("pending").textContent = `${n} waiting`;
+}
+function droneSVG(box) {
+  const [x, y, w, h] = box;
+  return `<svg viewBox="0 0 200 120" role="img" aria-label="Simulated drone inspection frame">
+    <rect width="200" height="120" fill="var(--chip)"/>
+    <rect x="20" y="70" width="150" height="26" rx="10" fill="var(--muted)" opacity=".55"/>
+    <rect x="50" y="40" width="70" height="34" rx="4" fill="var(--accent)" opacity=".85"/>
+    <path d="M118 48 L160 22 L178 34" stroke="var(--ink)" stroke-width="5" fill="none" stroke-linecap="round" opacity=".7"/>
+    <rect x="${x}" y="${y}" width="${w}" height="${h}" fill="none" stroke="var(--crit)" stroke-width="2.5" stroke-dasharray="5 3"/>
+    <text x="6" y="12" font-size="8" font-family="IBM Plex Mono, monospace" fill="var(--ink)">DRONE · SIMULATED</text>
+    <line x1="100" y1="54" x2="100" y2="66" stroke="var(--ink)" opacity=".4"/><line x1="94" y1="60" x2="106" y2="60" stroke="var(--ink)" opacity=".4"/>
+  </svg>`;
+}
+const STEPS = [["fault", "Fault", "machine"], ["triage", "Triage", "agent"], ["drone", "Drone look", "robot"], ["parts", "Parts", "agent"], ["mech", "Mechanic", "agent"], ["call", "Your call", "human"]];
+
+async function runEvent(ev) {
+  busy = true; setButtons();
+  clock = Math.max(clock, toMin(ev.at));
+  $("clock").textContent = fmt(clock);
+  const m = machine(ev.machine);
+  stats.faults++;
+  $("empty").hidden = true;
+
+  const card = document.createElement("article");
+  card.className = `card sev-${ev.triage.sev}`;
+  const codeHtml = ev.code
+    ? `<span class="code mono">SPN ${ev.code.spn} · FMI ${ev.code.fmi}</span> ${esc(ev.code.text)}`
+    : `<span class="pill">Robot finding</span> Spotted on the scheduled drone lap`;
+  card.innerHTML = `
+    <div class="head"><div class="title">${esc(m.id)} · ${esc(m.model)}</div>
+      <div class="meta">${esc(siteName(m.site))} · ${ev.at}</div></div>
+    <div class="pipeline">${STEPS.map(([k, l, w]) => `<span class="step" data-s="${k}">${l}<span class="who-tag">${w}</span></span>`).join("")}</div>
+    <div class="body"><div class="row"><div class="k">Signal</div><div class="v">${codeHtml}</div></div></div>
+    <div class="thinking">Agent is working on it</div>`;
+  $("inbox").prepend(card);
+  const body = card.querySelector(".body");
+  const thinking = card.querySelector(".thinking");
+  const step = (k, cls) => card.querySelector(`[data-s="${k}"]`).className = `step ${cls}`;
+  const addRow = (k, html) => { const r = document.createElement("div"); r.className = "row"; r.innerHTML = `<div class="k">${k}</div><div class="v">${html}</div>`; body.append(r); };
+
+  log(ev.source === "drone" ? "robot" : "machine", ev.code ? `${m.id} reported SPN ${ev.code.spn}/FMI ${ev.code.fmi}` : `Yard lap flagged ${m.id}`);
+  m.status = ev.triage.sev === "critical" ? "down" : "warn"; renderFleet(m.id);
+  step("fault", "done"); step("triage", "active"); await wait(700);
+
+  addRow("Agent triage", `<span class="pill ${ev.triage.sev}">${ev.triage.sev}</span> ${esc(ev.triage.cause)} <span class="mono" style="color:var(--muted)">(${Math.round(ev.triage.conf * 100)}% confident)</span>`);
+  log("agent", `Triage: ${ev.triage.sev}. ${ev.triage.cause.split(".")[0]}.`);
+  step("triage", "done");
+
+  if (ev.auto) {
+    for (const k of ["drone", "parts", "mech", "call"]) step(k, "skip");
+    addRow("Handled", `<span class="pill done">Auto</span> ${esc(ev.auto)}`);
+    thinking.remove();
+    card.style.opacity = ".85";
+    stats.auto++; m.status = "ok";
+    log("agent", `Handled ${m.id} without a decision: ${ev.auto.split(".")[0]}.`);
+    renderFleet(); renderStats(); busy = false; setButtons(); return;
+  }
+
+  step("drone", "active"); await wait(700);
+  if (ev.drone.ok) {
+    addRow("Drone look", `<div class="drone">${droneSVG(ev.drone.box)}<div><b>${esc(ev.drone.flag)}</b><ul>${ev.drone.findings.map((f) => `<li>${esc(f)}</li>`).join("")}</ul><span class="mono" style="color:var(--muted)">${esc(ev.drone.where)}${ev.drone.mins ? ` · on site in ${ev.drone.mins} min` : ""}</span></div></div>`);
+    log("robot", `Drone (${ev.drone.where}) inspected ${m.id}: ${ev.drone.flag.toLowerCase()}`);
+    stats.trips++;
+    step("drone", "done");
+  } else {
+    addRow("Drone look", `<span style="color:var(--muted)">${esc(ev.drone.why)}</span>`);
+    step("drone", "skip");
+  }
+
+  step("parts", "active"); await wait(600);
+  addRow("Parts", `<div class="tbl"><table class="parts"><tr><th>Part</th><th>SKU</th><th>Stock</th><th>Cost</th></tr>${ev.parts.map((p) =>
+    `<tr><td>${esc(p.name)}</td><td class="mono">${p.sku}</td><td class="${p.stock ? "stock-ok" : "stock-no"}">${p.stock ? p.stock + " in shop" : "0"}</td><td>$${p.cost.toLocaleString()}</td></tr>${p.lead ? `<tr><td colspan="4" class="note">${esc(p.lead)}. Over your $500 limit, so a PO is drafted.</td></tr>` : ""}`).join("")}</table></div>`);
+  log("agent", ev.parts.some((p) => !p.stock) ? `Part not in stock for ${m.id}. PO drafted for approval.` : `Parts for ${m.id} found in the shop.`);
+  step("parts", "done"); step("mech", "active"); await wait(600);
+
+  addRow("Mechanic", `<b>${esc(ev.mech.name)}</b> · ${esc(ev.mech.eta)}<br><span style="color:var(--muted)">${esc(ev.mech.why)}</span>`);
+  step("mech", "done"); step("call", "active");
+  if (ev.note) addRow("Why this card", `<div class="note">${esc(ev.note)}</div>`);
+  thinking.remove();
+
+  const dec = document.createElement("div");
+  dec.className = "decision";
+  dec.innerHTML = `<div class="ask">${esc(ev.ask)}</div><div class="btns">${ev.options.map((o, i) =>
+    `<button data-i="${i}" class="${o.primary ? "primary" : ""}">${esc(o.label)}</button>`).join("")}</div>`;
+  card.append(dec);
+  card.dataset.open = "1";
+  stats.decisionMins.push((ev.drone.ok ? ev.drone.mins : 0) + 2);
+  log("agent", `Sent you one decision for ${m.id}.`);
+  renderStats();
+
+  dec.querySelectorAll("button").forEach((b) => b.addEventListener("click", () => {
+    const o = ev.options[+b.dataset.i];
+    clock += 3; $("clock").textContent = fmt(clock);
+    m.status = o.status;
+    if (o.mech) { const me = MECHS.find((x) => x.name === o.mech[0]); me.task = o.mech[1]; }
+    if (o.move) { machine(o.move[0]).site = o.move[1]; log("human", `Moved ${o.move[0]} to ${siteName(o.move[1])}.`); }
+    if (o.trip) stats.trips++;
+    dec.className = "decision resolved";
+    dec.innerHTML = `<div class="outcome"><b>✓ ${esc(o.label)}.</b> ${esc(o.out)}</div>`;
+    step("call", "done");
+    card.dataset.open = "0";
+    log("human", `You chose "${o.label}" for ${m.id}.`);
+    log("agent", o.out.split(".")[0] + ".");
+    renderFleet(m.id); renderStats();
+  }));
+
+  busy = false; setButtons();
+}
+
+function setButtons() {
+  $("next").disabled = busy || idx >= EVENTS.length;
+  $("next").textContent = idx >= EVENTS.length ? "All events sent" : "Next event";
+}
+async function next() { if (busy || idx >= EVENTS.length) return; await runEvent(EVENTS[idx++]); }
+$("next").addEventListener("click", next);
+$("auto").addEventListener("click", async () => {
+  if (auto) return;
+  auto = true; $("auto").disabled = true;
+  while (idx < EVENTS.length) { await next(); await wait(1200); }
+  auto = null; $("auto").disabled = false;
+});
+$("reset").addEventListener("click", () => location.reload());
+
+renderFleet(); renderStats(); setButtons();
+log("machine", "Fleet online: 22 machines reporting through 4 brands' telematics.");
+})();
+</script>
+</body>
+</html>
